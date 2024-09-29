@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1059464837496",
+    "project_id": "moh-aligo",
+    "storage_bucket": "moh-aligo.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1059464837496:android:00897ebb2d8c18b5af708d",
+        "android_client_info": {
+          "package_name": "ng.sysoftware.aligo.aligo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC-JAbkWgsIfs3CKWuBq153KluI8jAtDck"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

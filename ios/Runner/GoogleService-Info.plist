@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>API_KEY</key>
+	<string>AIzaSyAqm5grnt6CNbsX1GW1S3lWLQm9WqadLDA</string>
+	<key>GCM_SENDER_ID</key>
+	<string>1059464837496</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>ng.sysoftware.aligo</string>
+	<key>PROJECT_ID</key>
+	<string>moh-aligo</string>
+	<key>STORAGE_BUCKET</key>
+	<string>moh-aligo.appspot.com</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:1059464837496:ios:5d9e5b5299f00fc2af708d</string>
+</dict>
+</plist>
