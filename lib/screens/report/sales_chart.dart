@@ -1,6 +1,6 @@
-import 'package:aligo/models/disbursement.dart';
-import 'package:charts_flutter/flutter.dart' as charts;
 import 'package:flutter/material.dart';
+import 'package:syncfusion_flutter_charts/charts.dart';
+import 'package:aligo/models/disbursement.dart';
 
 class SalesChart extends StatelessWidget {
   final List<DisbursementRecord> data;
@@ -9,16 +9,6 @@ class SalesChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    List<charts.Series<DisbursementRecord, String>> series = [
-      charts.Series(
-        id: "disbursements",
-        data: data,
-        domainFn: (DisbursementRecord series, _) => series.brand,
-        measureFn: (DisbursementRecord series, _) => int.parse(series.quantity),
-        // colorFn: (Inventory series, _) => Colors.blue,
-      )
-    ];
-
     return Container(
       height: 300,
       padding: const EdgeInsets.all(25),
@@ -29,10 +19,28 @@ class SalesChart extends StatelessWidget {
             children: <Widget>[
               const Text(
                 "Disbursements per product in the past 30 days",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               Expanded(
-                child: charts.BarChart(series, animate: true),
-              )
+                child: SfCartesianChart(
+                  primaryXAxis: CategoryAxis(),
+                  series: <CartesianSeries>[
+                    BarSeries<DisbursementRecord, String>(
+                      dataSource: data,
+                      xValueMapper: (DisbursementRecord record, _) =>
+                          record.brand,
+                      yValueMapper: (DisbursementRecord record, _) =>
+                          int.parse(record.quantity),
+                      color: Colors.blue,
+                      // Customize the color of the bars
+                      dataLabelSettings: const DataLabelSettings(
+                        isVisible: true, // Show values on top of the bars
+                      ),
+                    ),
+                  ],
+                  enableAxisAnimation: true,
+                ),
+              ),
             ],
           ),
         ),

@@ -1,23 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:aligo/models/inventory.dart';
-import 'package:charts_flutter/flutter.dart' as charts;
 
 class InventoryChart extends StatelessWidget {
   final List<Inventory> data;
 
   const InventoryChart({Key? key, required this.data}) : super(key: key);
+
   @override
   Widget build(BuildContext context) {
-    List<charts.Series<Inventory, String>> series = [
-      charts.Series(
-        id: "inventory",
-        data: data,
-        domainFn: (Inventory series, _) => series.brand,
-        measureFn: (Inventory series, _) => int.parse(series.quantity),
-        // colorFn: (Inventory series, _) => Colors.blue,
-      )
-    ];
-
     return Container(
       height: 300,
       padding: const EdgeInsets.all(25),
@@ -28,15 +19,31 @@ class InventoryChart extends StatelessWidget {
             children: <Widget>[
               const Text(
                 "Inventory",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               Expanded(
-                child: charts.BarChart(series, animate: true),
-              )
+                child: SfCartesianChart(
+                  primaryXAxis: const CategoryAxis(),
+                  series: <CartesianSeries>[
+                    BarSeries<Inventory, String>(
+                      dataSource: data,
+                      xValueMapper: (Inventory inventory, _) => inventory.brand,
+                      yValueMapper: (Inventory inventory, _) =>
+                          int.parse(inventory.quantity),
+                      color: Colors.blue,
+                      // Customize the color
+                      dataLabelSettings: const DataLabelSettings(
+                        isVisible: true,
+                      ),
+                    )
+                  ],
+                  enableAxisAnimation: true,
+                ),
+              ),
             ],
           ),
         ),
       ),
     );
   }
-
 }
