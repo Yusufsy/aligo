@@ -1,110 +1,50 @@
-import 'dart:io';
-import 'package:aligo/models/inventory.dart';
-import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../models/inventory.dart';
 
 class InventoryDBHelper {
-  InventoryDBHelper._privateConstructor();
+  InventoryDBHelper._();
 
-  static final InventoryDBHelper instance =
-      InventoryDBHelper._privateConstructor();
+  static final InventoryDBHelper instance = InventoryDBHelper._();
+  final _col = FirebaseFirestore.instance.collection('inventory');
 
-  static Database? _database;
+  Future<List<Inventory>> getInventories() async {
+    final snap = await _col.orderBy('id', descending: true).get();
+    return snap.docs.map((d) {
+      final data = d.data();
+      return Inventory.fromMap(data);
+    }).toList();
+  }
 
-  Future<Database> get database async => _database ??= await _initDatabase();
+  /// Get single inventory item by its `code`
+  Future<Inventory?> getInventoryByCode(String code) async {
+    final snap = await _col.where('code', isEqualTo: code).limit(1).get();
+    if (snap.docs.isEmpty) return null;
+    return Inventory.fromMap(snap.docs.first.data());
+  }
 
-  Future<Database> _initDatabase() async {
-    Directory documentsDirectory = await getApplicationDocumentsDirectory();
-    String path = join(documentsDirectory.path, 'aligo.db');
-    return await openDatabase(
-      path,
-      version: 1,
-      onCreate: _onCreate,
+  Future<void> add(Inventory item) async {
+    await _col.doc(item.code).set(item.toMap());
+  }
+
+  Future<void> update(Inventory item) async {
+    await _col.doc(item.code).update(item.toMap());
+  }
+
+  Future<void> remove(String code) async {
+    await _col.doc(code).delete();
+  }
+
+  /// Sum of all quantities in inventory
+  Future<int> sumQty() async {
+    final list = await getInventories();
+    return list.fold<int>(
+      0,
+      (int sum, item) => sum + int.parse(item.quantity),
     );
   }
 
-  Future _onCreate(Database db, int version) async {
-    await db.execute('''
-      CREATE TABLE inventory(
-          id INTEGER PRIMARY KEY,
-          code TEXT,
-          brand TEXT,
-          variety TEXT,
-          colour TEXT,
-          quantity INTEGER,
-          date_added DATE,
-          image BLOB
-      )
-      ''');
-    await db.execute('''
-      CREATE TABLE disbursements(
-          id INTEGER PRIMARY KEY,
-          employeeId INTEGER,
-          productId INTEGER,
-          quantity INTEGER,
-          dateOfDisbursement DATE
-      )
-      ''');
-  }
-
-  Future<List<Inventory>> getInventories() async {
-    Database db = await instance.database;
-    var inventories = await db.query('inventory', orderBy: 'date_added DESC');
-    List<Inventory> inventoryList = inventories.isNotEmpty
-        ? inventories.map((c) => Inventory.fromMap(c)).toList()
-        : [];
-    return inventoryList;
-  }
-
-  Future<List<Inventory>> getInventoryByCode(String code) async {
-    Database db = await instance.database;
-    var inventories =
-        await db.query('inventory', where: 'code="$code"', limit: 1);
-    List<Inventory> inventoryList = inventories.isNotEmpty
-        ? inventories.map((c) => Inventory.fromMap(c)).toList()
-        : [];
-    return inventoryList;
-  }
-
-  Future<int> add(Inventory inventory) async {
-    Database db = await instance.database;
-    return await db.insert('inventory', inventory.toMap());
-  }
-
-  Future<int> remove(int id) async {
-    Database db = await instance.database;
-    return await db.delete('inventory', where: 'id = ?', whereArgs: [id]);
-  }
-
-  Future<int> update(Inventory inventory) async {
-    Database db = await instance.database;
-    return await db.update('inventory', inventory.toMap(),
-        where: "id = ?", whereArgs: [inventory.id]);
-  }
-
-  Future<String> sumQty() async {
-    Database db = await instance.database;
-    var sum = await db.rawQuery("SELECT sum(quantity) FROM inventory");
-    return sum[0]['sum(quantity)'].toString();
-  }
-
-  @Deprecated('No used for now')
-  Future<String> sumPrice() async {
-    Database db = await instance.database;
-    var sum = await db.rawQuery("SELECT sum(price*quantity) FROM inventory");
-    return sum[0]['sum(price*quantity)'].toString();
-  }
-
-  Future<String> numProducts() async {
-    Database db = await instance.database;
-    var sum = await db.rawQuery("SELECT count(id) FROM inventory");
-    return sum[0]['count(id)'].toString();
-  }
-
-  Future<void> deleteDatabase() async {
-    Directory documentsDirectory = await getApplicationDocumentsDirectory();
-    String path = join(documentsDirectory.path, 'aligo.db');
-    databaseFactory.deleteDatabase(path);
+  Future<int> numProducts() async {
+    final list = await getInventories();
+    return list.length;
   }
 }

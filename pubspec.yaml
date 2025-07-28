@@ -12,23 +12,25 @@ dependencies:
   flutter:
     sdk: flutter
 
-  cupertino_icons: ^1.0.2
-  sqflite: ^2.0.2+1
-  path_provider: ^2.0.10
-  intl: ^0.18.0
-  sqflite_common_ffi: ^2.1.1
-  file_picker: ^4.6.1
-  image_picker: ^1.0.5
+  cupertino_icons: ^1.0.8
+  sqflite: ^2.4.2
+  path_provider: ^2.1.5
+  intl: ^0.20.2
+  sqflite_common_ffi: ^2.3.5
+  file_picker: ^10.1.2
+  image_picker: ^1.1.2
   #  charts_flutter: ^0.12.0
-  syncfusion_flutter_charts: ^27.1.51
+  syncfusion_flutter_charts: ^29.1.40
   path:
-  mobile_scanner: ^5.1.1
-  firebase_core:
-  cloud_firestore:
-  excel: ^4.0.3
+  mobile_scanner: ^7.0.0
+  firebase_core: ^3.13.0
+  cloud_firestore: ^5.6.7
+  firebase_storage:
+  excel: ^4.0.6
+  signature:
 
 
-dependency_overrides:
+#dependency_overrides:
 # add override of charts_flutter
 #  charts_flutter:
 #    git:

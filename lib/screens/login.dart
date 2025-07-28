@@ -1,8 +1,7 @@
-import 'package:aligo/screens/home.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:excel/excel.dart';
+import 'package:aligo/screens/create_account.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:aligo/screens/home.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
@@ -13,130 +12,154 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController unameCntrl = TextEditingController();
-  final TextEditingController passCntrl = TextEditingController();
-  final String filePath = 'assets/images/emp_names.xlsx';
+  final TextEditingController staffIdCtrl = TextEditingController();
+  final TextEditingController passCtrl = TextEditingController();
 
-  Future<void> uploadEmployees() async {
+  bool _isLoading = false;
+
+  Future<void> _login() async {
+    if (_isLoading) return;
+    if (!_formKey.currentState!.validate()) return;
+
+    FocusScope.of(context).unfocus();
+
+    final staffId = staffIdCtrl.text.trim();
+    final password = passCtrl.text.trim();
+
+    setState(() => _isLoading = true);
+
     try {
-      // Load the Excel file from assets
-      ByteData data = await rootBundle.load(filePath);
-      var bytes = data.buffer.asUint8List();
-      var excel = Excel.decodeBytes(bytes);
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(staffId)
+          .get();
 
-      final firestoreInstance = FirebaseFirestore.instance;
-
-      for (var table in excel.tables.keys) {
-        var sheet = excel.tables[table];
-        for (var row in sheet!.rows.skip(1)) {
-          // Skip header row
-          var empNumber = row[0]!.value.toString();
-          var empName = row[1]!.value.toString();
-          // if (empNumber != null && empName != null) {
-          await firestoreInstance.collection('employees').doc(empNumber).set({
-            'number': empNumber,
-            'name': empName,
-          });
-          print("Employee Added: $empName");
-          // }
-        }
+      if (!doc.exists) {
+        throw 'لم يتم العثور على اسم المستخدم';
       }
+
+      final data = doc.data() as Map<String, dynamic>;
+      if (data['password'] != password) {
+        throw 'كلمة المرور غير صحيحة';
+      }
+
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const MyHomePage()),
+      );
     } catch (e) {
-      print("Error uploading employees: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
+  void dispose() {
+    staffIdCtrl.dispose();
+    passCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    var size = MediaQuery.of(context).size;
+    final size = MediaQuery.of(context).size;
+
     return Scaffold(
-      // backgroundColor: const Color(0xFF001522),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 25.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: <Widget>[
-            Image.asset(
-              "assets/images/mof_logo.jpeg",
-              height: 200,
-              width: 200,
-            ),
-            const Text(
-              'MoF Inventory Disbursement Management System',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontFamily: "Roboto", fontSize: 20),
-            ),
-            SizedBox(
-              width: size.width * 0.8,
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  children: <Widget>[
-                    TextFormField(
-                      controller: unameCntrl,
-                      decoration: const InputDecoration(
-                        icon: Icon(Icons.person),
-                        hintText: "Enter username",
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter some text';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(
-                      height: 30,
-                    ),
-                    TextFormField(
-                      controller: passCntrl,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                        icon: Icon(Icons.password),
-                        hintText: "Enter password",
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter some text';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(
-                      height: 30,
-                    ),
-                    ElevatedButton(
-                      onPressed: () {
-                        if (_formKey.currentState!.validate()) {
-                          if (unameCntrl.text == "admin" &&
-                              passCntrl.text == "admin") {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Welcome back')),
-                            );
-                            Navigator.pushReplacement(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (context) => const MyHomePage()));
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content:
-                                      Text('Username / password incorrect')),
-                            );
-                          }
-                        }
-                      },
-                      child: const Text('Login'),
-                    ),
-                  ],
+        child: Center(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Image.asset(
+                  'assets/images/mof_logo.jpeg',
+                  height: 150,
+                  width: 150,
                 ),
-              ),
-            )
-          ],
+                const SizedBox(height: 20),
+                const Text(
+                  'نظام إدارة شؤون قسم الحاسوب – دائرة الموازنة، وزارة المالية',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontFamily: 'Roboto', fontSize: 20),
+                ),
+                const SizedBox(height: 40),
+                SizedBox(
+                  width: size.width * 0.8,
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      children: [
+                        TextFormField(
+                          controller: staffIdCtrl,
+                          enabled: !_isLoading,
+                          decoration: const InputDecoration(
+                            icon: Icon(Icons.badge),
+                            hintText: 'اسم المستخدم',
+                          ),
+                          validator: (v) => v == null || v.isEmpty
+                              ? 'الرجاء إدخال اسم المستخدم'
+                              : null,
+                        ),
+                        const SizedBox(height: 20),
+                        TextFormField(
+                          controller: passCtrl,
+                          enabled: !_isLoading,
+                          obscureText: true,
+                          decoration: const InputDecoration(
+                            icon: Icon(Icons.lock),
+                            hintText: 'كلمة المرور',
+                          ),
+                          validator: (v) => v == null || v.isEmpty
+                              ? 'الرجاء إدخال كلمة المرور'
+                              : null,
+                        ),
+                        const SizedBox(height: 30),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: ElevatedButton(
+                            onPressed: _isLoading ? null : _login,
+                            child: _isLoading
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.5,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                          Colors.white),
+                                    ),
+                                  )
+                                : const Text('تسجيل الدخول'),
+                          ),
+                        ),
+                        const SizedBox(height: 15),
+                        TextButton(
+                          onPressed: _isLoading
+                              ? null
+                              : () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const CreateAccountPage(),
+                                    ),
+                                  ),
+                          child: const Text("ليس لديك حساب؟ أنشئ حسابًا"),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
-      // floatingActionButton:
-      //     FloatingActionButton(onPressed: () async => await uploadEmployees()),
     );
   }
 }

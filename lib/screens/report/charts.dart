@@ -52,10 +52,10 @@ class _ChartsPageState extends State<ChartsPage> {
               Row(
                 children: [
                   const Spacer(),
-                  FutureBuilder(
+                  FutureBuilder<int>(
                       future: InventoryDBHelper.instance.numProducts(),
-                      builder: (BuildContext context,
-                          AsyncSnapshot<String> snapshot) {
+                      builder:
+                          (BuildContext context, AsyncSnapshot<int> snapshot) {
                         if (!snapshot.hasData) {
                           return const Center(
                               child: CircularProgressIndicator());
@@ -78,7 +78,7 @@ class _ChartsPageState extends State<ChartsPage> {
                                           fontSize: 20, color: Colors.white),
                                     ),
                                     Text(
-                                      snapshot.data!,
+                                      snapshot.data!.toString(),
                                       style: summaryHead,
                                     ),
                                   ],
@@ -197,26 +197,26 @@ class _ChartsPageState extends State<ChartsPage> {
                                 );
                         },
                       ),
-                      FutureBuilder<List<DisbursementRecord>>(
-                        future: DisbursementDBHelper.instance
-                            .getDisbursementsByMonth(),
-                        builder: (BuildContext context,
-                            AsyncSnapshot<List<DisbursementRecord>> snapshot) {
-                          if (!snapshot.hasData) {
-                            return const Center(
-                                child: CircularProgressIndicator());
-                          }
-                          return snapshot.data!.isEmpty
-                              ? const Center(child: Text('No products yet.'))
-                              : SizedBox(
-                                  height: size.height * 0.7,
-                                  width: size.width * 0.475,
-                                  child: SalesChart(
-                                    data: snapshot.data!,
-                                  ),
-                                );
-                        },
-                      ),
+                      // FutureBuilder<List<DisbursementRecord>>(
+                      //   future: DisbursementDBHelper.instance
+                      //       .getDisbursementsByMonth(),
+                      //   builder: (BuildContext context,
+                      //       AsyncSnapshot<List<DisbursementRecord>> snapshot) {
+                      //     if (!snapshot.hasData) {
+                      //       return const Center(
+                      //           child: CircularProgressIndicator());
+                      //     }
+                      //     return snapshot.data!.isEmpty
+                      //         ? const Center(child: Text('No products yet.'))
+                      //         : SizedBox(
+                      //             height: size.height * 0.7,
+                      //             width: size.width * 0.475,
+                      //             child: SalesChart(
+                      //               data: snapshot.data!,
+                      //             ),
+                      //           );
+                      //   },
+                      // ),
                     ],
                   )),
             ],
@@ -226,7 +226,7 @@ class _ChartsPageState extends State<ChartsPage> {
     );
   }
 
-  showAlertDialog(BuildContext context, int id) {
+  showAlertDialog(BuildContext context, String id) {
     // set up the buttons
     Widget cancelButton = TextButton(
       child: const Text("Cancel"),

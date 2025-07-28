@@ -1,13 +1,21 @@
+import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:io' show File; // safe - guarded by kIsWeb logic
 
 import 'package:aligo/components/aligo_appbar.dart';
 import 'package:aligo/components/aligo_drawer.dart';
 import 'package:aligo/helpers/disbursement_helper.dart';
 import 'package:aligo/models/disbursement.dart';
 import 'package:aligo/screens/disbursement/add_disbursement.dart';
-import 'package:aligo/screens/disbursement/disbursement_dialog.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
+// If you add a web helper for CSV downloading, re-enable:
+// import 'csv_web_download_stub.dart' if (dart.library.html) 'csv_web_download.dart';
 
 class DisbursementList extends StatefulWidget {
   const DisbursementList({Key? key}) : super(key: key);
@@ -17,405 +25,278 @@ class DisbursementList extends StatefulWidget {
 }
 
 class _DisbursementListState extends State<DisbursementList> {
-  TextStyle tableHead =
+  final TextStyle tableHead =
       const TextStyle(fontSize: 14.0, fontWeight: FontWeight.w600);
-  TextStyle summaryHead = const TextStyle(
-      fontSize: 20.0, fontWeight: FontWeight.bold, color: Colors.white);
+  final TextEditingController staffSearchCtrl = TextEditingController();
 
-  final formatCurrency = NumberFormat.currency(symbol: "");
+  String? _dateFilter; // 'day' | 'month' | 'year' | null
+  bool _loading = true;
+  bool _exporting = false;
 
-  String? _filter;
-  var year = DateFormat('yyyy').format(DateTime.now());
+  List<Disbursement> _allDisbursements = [];
+  Map<String, String> _employeeNameById = {}; // employeeRefId -> name
+  Map<String, String> _productNameById = {}; // productId -> composed name
+
+  // Filtered view
+  List<Disbursement> _filtered = [];
+
+  int get _totalCount => _allDisbursements.length;
+
+  int get _filteredCount => _filtered.length;
+
+  int get _filteredQty =>
+      _filtered.fold<int>(0, (s, d) => s + int.tryParse(d.quantity)!.toInt());
 
   @override
+  void initState() {
+    super.initState();
+    _loadData();
+    staffSearchCtrl.addListener(_applyFilter);
+  }
+
+  @override
+  void dispose() {
+    staffSearchCtrl.removeListener(_applyFilter);
+    staffSearchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _loading = true);
+    try {
+      // Parallel fetch: disbursements + employees
+      final disbFuture =
+          DisbursementDBHelper.instance.getDisbursements(filter: _dateFilter);
+      final employeesFuture =
+          FirebaseFirestore.instance.collection('employees').get();
+
+      final results = await Future.wait([disbFuture, employeesFuture]);
+      final disbursements = results[0] as List<Disbursement>;
+      final empSnap = results[1] as QuerySnapshot;
+
+      // Build employee map
+      final empMap = <String, String>{};
+      for (final doc in empSnap.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        final name = (data['name'] ?? '').toString();
+        empMap[doc.id] = name;
+      }
+
+      _allDisbursements = disbursements;
+      _employeeNameById = empMap;
+
+      // Fetch product names
+      await _loadProductsFor(disbursements);
+
+      _applyFilter();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Load error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  /// Compose product name from inventory fields
+  String _composeProductName(Map<String, dynamic> data) {
+    final brand = (data['brand'] ?? '').toString().trim();
+    final variety = (data['variety'] ?? '').toString().trim();
+    final colour = (data['colour'] ?? '').toString().trim();
+    final parts = [brand, variety, colour].where((p) => p.isNotEmpty).toList();
+    return parts.isEmpty ? '—' : parts.join(' ');
+  }
+
+  /// Batch load distinct products referenced in disbursements.
+  Future<void> _loadProductsFor(List<Disbursement> disbursements) async {
+    final ids = {
+      for (final d in disbursements) d.productId,
+    };
+    // Firestore whereIn limit of 10 per query; batch if > 10
+    final List<String> allIds = ids.toList();
+    final Map<String, String> resultMap = {};
+    const batchSize = 10;
+
+    for (var i = 0; i < allIds.length; i += batchSize) {
+      final chunk = allIds.sublist(
+        i,
+        (i + batchSize > allIds.length) ? allIds.length : i + batchSize,
+      );
+      try {
+        final snap = await FirebaseFirestore.instance
+            .collection('inventory')
+            .where(FieldPath.documentId, whereIn: chunk)
+            .get();
+        for (final doc in snap.docs) {
+          final data = doc.data() as Map<String, dynamic>;
+          resultMap[doc.id] = _composeProductName(data);
+        }
+      } catch (_) {
+        // If a chunk fails (e.g., some IDs missing), we continue
+      }
+    }
+
+    // Fallback names for any not found
+    for (final id in allIds) {
+      resultMap.putIfAbsent(id, () => id); // just show id if missing
+    }
+
+    _productNameById = resultMap;
+  }
+
+  void _applyFilter() {
+    final q = staffSearchCtrl.text.trim().toLowerCase();
+    bool nameContains(String? name) =>
+        q.isEmpty || (name != null && name.toLowerCase().contains(q));
+
+    _filtered = _allDisbursements.where((d) {
+      final empName = _employeeNameById[d.employeeRefId];
+      return nameContains(empName);
+    }).toList()
+      ..sort((a, b) {
+        // Sort by date desc then employee name
+        final ad = a.dateOfDisbursement;
+        final bd = b.dateOfDisbursement;
+        final cmpDate = bd.compareTo(ad);
+        if (cmpDate != 0) return cmpDate;
+        final an = _employeeNameById[a.employeeRefId] ?? '';
+        final bn = _employeeNameById[b.employeeRefId] ?? '';
+        return an.toLowerCase().compareTo(bn.toLowerCase());
+      });
+
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _refresh() async => _loadData();
+
+  bool get _isDesktopOrWeb {
+    if (kIsWeb) return true;
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.macOS:
+      case TargetPlatform.windows:
+      case TargetPlatform.linux:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  // ------------------- CSV Export -------------------
+  Future<void> _exportCsv() async {
+    if (_filtered.isEmpty || _exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final buffer = StringBuffer();
+      buffer.writeln([
+        'EmployeeName',
+        'EmployeeRefId',
+        'ProductId',
+        'ProductName',
+        'Quantity',
+        'DateOfDisbursement',
+        'SignaturePresent',
+      ].join(','));
+
+      for (final d in _filtered) {
+        final empName = _employeeNameById[d.employeeRefId] ?? '';
+        final productName = _productNameById[d.productId] ?? d.productId;
+        final hasSig = (d.signatureBase64.isNotEmpty).toString();
+        buffer.writeln([
+          _csvEscape(empName),
+          _csvEscape(d.employeeRefId),
+          _csvEscape(d.productId),
+          _csvEscape(productName),
+          _csvEscape(d.quantity),
+          _csvEscape(d.dateOfDisbursement),
+          _csvEscape(hasSig),
+        ].join(','));
+      }
+
+      final csv = buffer.toString();
+      final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final filename = 'disbursements_export_$ts.csv';
+
+      if (kIsWeb) {
+        // saveCsvWeb(filename, csv); // uncomment if you add the helper
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('CSV generated (web): $filename')),
+          );
+        }
+      } else {
+        final bytes = Uint8List.fromList(utf8.encode(csv));
+        final savePath = await FilePicker.platform.saveFile(
+          dialogTitle: 'Save Disbursements CSV',
+          fileName: filename,
+          type: FileType.custom,
+          allowedExtensions: ['csv'],
+          bytes: bytes,
+          lockParentWindow: true,
+        );
+
+        if (savePath == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Export cancelled')),
+            );
+          }
+          return;
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Saved: $savePath')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  String _csvEscape(String? v) {
+    if (v == null) return '';
+    final s = v;
+    if (s.contains(',') || s.contains('"') || s.contains('\n')) {
+      return '"${s.replaceAll('"', '""')}"';
+    }
+    return s;
+  }
+
+  // ------------------- UI -------------------
+  @override
   Widget build(BuildContext context) {
-    ButtonStyle selectBtn =
-        ButtonStyle(foregroundColor: MaterialStateProperty.all(Colors.red));
-    ButtonStyle defaultBtn = const ButtonStyle();
     return Scaffold(
-      appBar: const AligoAppbar(title: 'Disbursements'),
+      appBar: const AligoAppbar(title: 'تسليم مواد', showLogout: true),
       drawer: const AligoDrawer(),
-      backgroundColor: Colors.white,
-      body: Padding(
-        padding: const EdgeInsets.all(5),
+      body: RefreshIndicator(
+        onRefresh: _refresh,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            const SizedBox(height: 15),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  FutureBuilder(
-                    future: _filter == null
-                        ? DisbursementDBHelper.instance.numDisbursements(null)
-                        : (_filter == 'day'
-                            ? DisbursementDBHelper.instance
-                                .numDisbursements('day')
-                            : (_filter == 'month'
-                                ? DisbursementDBHelper.instance
-                                    .numDisbursements('month')
-                                : DisbursementDBHelper.instance
-                                    .numDisbursements('year'))),
-                    builder:
-                        (BuildContext context, AsyncSnapshot<String> snapshot) {
-                      if (!snapshot.hasData) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-                      return snapshot.data == null
-                          ? const SizedBox()
-                          : Container(
-                              padding: const EdgeInsets.all(10),
-                              color: Colors.blueAccent,
-                              child: Row(
-                                children: [
-                                  const Icon(
-                                    Icons.list_alt,
-                                    size: 20,
-                                    color: Colors.white,
-                                  ),
-                                  const Text(
-                                    "Disbursements: ",
-                                    style: TextStyle(
-                                        fontSize: 18, color: Colors.white),
-                                  ),
-                                  Text(
-                                    snapshot.data!,
-                                    style: summaryHead,
-                                  ),
-                                ],
-                              ),
-                            );
-                    },
-                  ),
-                  FutureBuilder(
-                    future: _filter == null
-                        ? DisbursementDBHelper.instance.sumQty(null)
-                        : (_filter == 'day'
-                            ? DisbursementDBHelper.instance.sumQty('day')
-                            : (_filter == 'month'
-                                ? DisbursementDBHelper.instance.sumQty('month')
-                                : DisbursementDBHelper.instance
-                                    .sumQty('year'))),
-                    builder:
-                        (BuildContext context, AsyncSnapshot<String> snapshot) {
-                      return snapshot.data == null
-                          ? const SizedBox()
-                          : Container(
-                              padding: const EdgeInsets.all(10),
-                              color: Colors.green,
-                              child: Row(
-                                children: [
-                                  const Icon(
-                                    Icons.numbers,
-                                    size: 20,
-                                    color: Colors.white,
-                                  ),
-                                  const Text(
-                                    "Items: ",
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  snapshot.data == 'null'
-                                      ? Text(
-                                          "0",
-                                          style: summaryHead,
-                                        )
-                                      : Text(
-                                          snapshot.data!,
-                                          style: summaryHead,
-                                        ),
-                                ],
-                              ),
-                            );
-                    },
-                  ),
-                  // FutureBuilder(
-                  //   future: _filter == null
-                  //       ? SaleDBHelper.instance.sumAmount(null)
-                  //       : (_filter == 'day'
-                  //           ? SaleDBHelper.instance.sumAmount('day')
-                  //           : (_filter == 'month' ? SaleDBHelper.instance.sumAmount('month') : SaleDBHelper.instance.sumAmount('year'))),
-                  //   builder: (BuildContext context, AsyncSnapshot<String> snapshot) {
-                  //     // if (!snapshot.hasData) {
-                  //     //   return const Center(child: CircularProgressIndicator());
-                  //     // }
-                  //     return snapshot.data == null
-                  //         ? const SizedBox()
-                  //         : Container(
-                  //             padding: const EdgeInsets.all(10),
-                  //             color: Colors.blueGrey,
-                  //             child: Row(
-                  //               children: [
-                  //                 const Text(
-                  //                   "Revenue: ",
-                  //                   style: TextStyle(fontSize: 18, fontFamily: 'Roboto', color: Colors.white),
-                  //                 ),
-                  //                 snapshot.data == 'null'
-                  //                     ? Text(
-                  //                         "0",
-                  //                         style: summaryHead,
-                  //                       )
-                  //                     : Text(
-                  //                         formatCurrency.format(int.parse(snapshot.data!)),
-                  //                         style: summaryHead,
-                  //                       ),
-                  //               ],
-                  //             ),
-                  //           );
-                  //   },
-                  // ),
-                  // FutureBuilder(
-                  //   future: _filter == null
-                  //       ? SaleDBHelper.instance.getProfit(null)
-                  //       : (_filter == 'day'
-                  //           ? SaleDBHelper.instance.getProfit('day')
-                  //           : (_filter == 'month' ? SaleDBHelper.instance.getProfit('month') : SaleDBHelper.instance.getProfit('year'))),
-                  //   builder: (BuildContext context, AsyncSnapshot<String> snapshot) {
-                  //     // if (!snapshot.hasData) {
-                  //     //   return const Center(child: CircularProgressIndicator());
-                  //     // }
-                  //     return snapshot.data == null
-                  //         ? const SizedBox()
-                  //         : Container(
-                  //             padding: const EdgeInsets.all(10),
-                  //             color: Colors.deepOrange,
-                  //             child: Row(
-                  //               children: [
-                  //                 const Text(
-                  //                   "Profit: ",
-                  //                   style: TextStyle(fontSize: 18, fontFamily: 'Roboto', color: Colors.white),
-                  //                 ),
-                  //                 snapshot.data == 'null'
-                  //                     ? Text(
-                  //                         "0",
-                  //                         style: summaryHead,
-                  //                       )
-                  //                     : Text(
-                  //                         formatCurrency.format(int.parse(snapshot.data!)),
-                  //                         style: summaryHead,
-                  //                       ),
-                  //               ],
-                  //             ),
-                  //           );
-                  //   },
-                  // ),
-                ],
-              ),
+          children: [
+            _buildSearchAndExportBar(),
+            _buildSummaryBar(),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _filtered.isEmpty
+                      ? Center(
+                          child: Text(
+                            staffSearchCtrl.text.isEmpty
+                                ? 'لم يتم صرف أي مبالغ حتى الآن.'
+                                : 'No matches for "${staffSearchCtrl.text}".',
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                        )
+                      : _buildTable(),
             ),
-            Row(
-              children: [
-                const Icon(
-                  Icons.filter_alt,
-                  color: Colors.blueAccent,
-                  size: 50,
-                ),
-                TextButton(
-                  onPressed: () {
-                    setState(() {
-                      _filter = null;
-                    });
-                  },
-                  style: _filter == null ? selectBtn : defaultBtn,
-                  child: const Text("All"),
-                ),
-                TextButton(
-                  onPressed: () {
-                    setState(() {
-                      _filter = "annual";
-                    });
-                  },
-                  style: _filter != null && _filter == 'annual'
-                      ? selectBtn
-                      : defaultBtn,
-                  child: const Text("Annual"),
-                ),
-                TextButton(
-                  onPressed: () {
-                    setState(() {
-                      _filter = "month";
-                    });
-                  },
-                  style: _filter != null && _filter == 'month'
-                      ? selectBtn
-                      : defaultBtn,
-                  child: const Text("30 days"),
-                ),
-                TextButton(
-                  onPressed: () {
-                    setState(() {
-                      _filter = "day";
-                    });
-                  },
-                  style: _filter != null && _filter == 'day'
-                      ? selectBtn
-                      : defaultBtn,
-                  child: const Text("Today"),
-                ),
-              ],
-            ),
-            FutureBuilder<List<DisbursementRecord>>(
-              future: _filter == null
-                  ? DisbursementDBHelper.instance.getDisbursements()
-                  : (_filter == 'day'
-                      ? DisbursementDBHelper.instance.getDisbursementsByDay()
-                      : (_filter == 'month'
-                          ? DisbursementDBHelper.instance
-                              .getDisbursementsByMonth()
-                          : DisbursementDBHelper.instance
-                              .getDisbursementByYear())),
-              builder: (BuildContext context,
-                  AsyncSnapshot<List<DisbursementRecord>> snapshot) {
-                if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                print(snapshot.data);
-                List<DataRow> rows = snapshot.data!.isEmpty
-                    ? []
-                    : snapshot.data!.map((sale) {
-                        return DataRow(
-                          cells: <DataCell>[
-                            DataCell(
-                              Text('${sale.id}'),
-                            ),
-                            DataCell(
-                              GestureDetector(
-                                onTap: () {
-                                  expandImageDialog(context, sale.image);
-                                },
-                                child: Image.memory(sale.image),
-                              ),
-                            ),
-                            DataCell(
-                              Text(
-                                  '${sale.brand} ${sale.variety} x${sale.quantity}'),
-                            ),
-                            // DataCell(
-                            //   Text(formatCurrency.format(int.parse(sale.price))),
-                            // ),
-                            DataCell(Text('${sale.employeeId}')),
-                          ],
-                          onSelectChanged: (selected) {
-                            showDialog(
-                              context: context,
-                              builder: (context) => DisbursementDialog(
-                                saleRecord: sale,
-                              ),
-                            );
-                          },
-                          onLongPress: () {
-                            showAlertDialog(context, sale.id!);
-                          },
-                        );
-                      }).toList();
-                return snapshot.data!.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'No disbursements yet.',
-                          style: TextStyle(fontSize: 20),
-                        ),
-                      )
-                    : DataTable(
-                        showCheckboxColumn: false,
-                        columns: <DataColumn>[
-                          DataColumn(label: Text('ID', style: tableHead)),
-                          DataColumn(label: Text('Image', style: tableHead)),
-                          DataColumn(label: Text('Product', style: tableHead)),
-                          // DataColumn(label: Text('Price', style: tableHead)),
-                          DataColumn(label: Text('EmpID', style: tableHead)),
-                        ],
-                        rows: rows,
-                      );
-                // ListView(
-                //         children: snapshot.data!.map(
-                //           (sale) {
-                //             return Center(
-                //               child: ListTile(
-                //                 title: Table(
-                //                   defaultColumnWidth: const IntrinsicColumnWidth(),
-                //                   children: <TableRow>[
-                //                     TableRow(children: <Widget>[
-                //                       TableCell(
-                //                         verticalAlignment: TableCellVerticalAlignment.middle,
-                //                         child: Text(sale.id.toString()),
-                //                       ),
-                //                       TableCell(
-                //                         verticalAlignment: TableCellVerticalAlignment.middle,
-                //                         child: GestureDetector(
-                //                           onTap: () {
-                //                             expandImageDialog(context, sale.image);
-                //                           },
-                //                           child: Column(
-                //                             children: [
-                //                               Image.memory(sale.image, height: 100),
-                //                               Text(sale.brand),
-                //                               Text(sale.variety),
-                //                               Text(sale.quantity),
-                //                             ],
-                //                           ),
-                //                         ),
-                //                       ),
-                //                       // TableCell(
-                //                       //   verticalAlignment: TableCellVerticalAlignment.middle,
-                //                       //   child: Text(sale.productId),),
-                //                       // TableCell(
-                //                       //     verticalAlignment: TableCellVerticalAlignment.middle,
-                //                       //     child: Text(inventory.variety),),
-                //                       TableCell(
-                //                         verticalAlignment: TableCellVerticalAlignment.middle,
-                //                         child: Column(
-                //                           children: [
-                //                             Text(
-                //                               formatCurrency.format(int.parse(sale.price)),
-                //                             ),
-                //                             // Text("Cost: ${formatCurrency.format(int.parse(sale.cost))}"),
-                //                           ],
-                //                         ),
-                //                       ),
-                //                       // TableCell(verticalAlignment: TableCellVerticalAlignment.middle, child: Center(child: Text(sale.quantity))),
-                //                       TableCell(
-                //                         verticalAlignment: TableCellVerticalAlignment.middle,
-                //                         child: Column(
-                //                           children: [
-                //                             Text(
-                //                               formatCurrency.format(int.parse(sale.amount)),
-                //                             ),
-                //                             // Text(
-                //                             //     "Profit: ${formatCurrency.format((int.parse(sale.price) - int.parse(sale.cost)) * int.parse(sale.quantity))}"),
-                //                           ],
-                //                         ),
-                //                       ),
-                //                       // TableCell(
-                //                       //   verticalAlignment: TableCellVerticalAlignment.middle,
-                //                       //   child: Text(sale.dateOfDisbursement),
-                //                       // ),
-                //                       // TableCell(
-                //                       //     verticalAlignment: TableCellVerticalAlignment.middle,
-                //                       //     child: Row(
-                //                       //       children: [
-                //                       //         IconButton(
-                //                       //           onPressed: () {
-                //                       //             showAlertDialog(context, sale.id!);
-                //                       //           },
-                //                       //           color: Colors.red,
-                //                       //           icon: const Icon(Icons.delete_forever),
-                //                       //           tooltip: "Delete",
-                //                       //         ),
-                //                       //       ],
-                //                       //     )),
-                //                     ])
-                //                   ],
-                //                 ),
-                //                 onTap: () {},
-                //               ),
-                //             );
-                //           },
-                //         ).toList(),
-                //       );
-              },
-            )
           ],
         ),
       ),
@@ -423,7 +304,7 @@ class _DisbursementListState extends State<DisbursementList> {
         onPressed: () {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => const AddDisbursement()),
+            MaterialPageRoute(builder: (_) => const AddDisbursement()),
           );
         },
         child: const Icon(Icons.post_add_sharp, size: 30),
@@ -431,75 +312,212 @@ class _DisbursementListState extends State<DisbursementList> {
     );
   }
 
-  showAlertDialog(BuildContext context, int id) {
-    // set up the buttons
-    Widget cancelButton = TextButton(
-      child: const Text("Cancel"),
-      onPressed: () {
-        Navigator.pop(context);
-      },
-    );
-    Widget continueButton = TextButton(
-      child: const Text(
-        "Delete",
-        style: TextStyle(color: Colors.red),
-      ),
-      onPressed: () async {
-        await DisbursementDBHelper.instance.remove(id).then((value) {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Disbursement deleted')));
-        });
-        setState(() {});
-      },
-    );
-
-    // set up the AlertDialog
-    AlertDialog alert = AlertDialog(
-      title: const Text("Confirm Delete"),
-      content: SizedBox(
-        height: MediaQuery.of(context).size.height * 0.18,
-        child: const Column(
-          children: <Widget>[
-            Icon(
-              Icons.warning_amber_outlined,
-              size: 100,
-              color: Colors.orange,
+  Widget _buildSearchAndExportBar() {
+    return Material(
+      elevation: 1,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: staffSearchCtrl,
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search),
+                  hintText: 'البحث حسب اسم الموظف...',
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                  suffixIcon: staffSearchCtrl.text.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Clear',
+                          icon: const Icon(Icons.close),
+                          onPressed: () {
+                            staffSearchCtrl.clear();
+                            _applyFilter();
+                          },
+                        ),
+                ),
+              ),
             ),
-            Text("Are you sure you want to delete?"),
+            const SizedBox(width: 10),
+            ElevatedButton.icon(
+              onPressed:
+                  (_filtered.isNotEmpty && !_exporting) ? _exportCsv : null,
+              icon: _exporting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.download),
+              label: Text(_exporting ? 'جاري التصدير...' : 'تصدير ملف CSV'),
+            ),
           ],
         ),
       ),
-      actions: [
-        cancelButton,
-        continueButton,
-      ],
     );
+  }
 
-    // show the dialog
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return alert;
+  Widget _buildSummaryBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      color: Colors.grey.shade100,
+      child: Wrap(
+        spacing: 16,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          _chip(
+            label: 'تسليم مواد',
+            value: '$_filteredCount / $_totalCount',
+            color: Colors.blueAccent,
+          ),
+          _chip(
+            label: 'أغراض',
+            value: '$_filteredQty',
+            color: Colors.green,
+          ),
+          // Uncomment if you want quick date filters still:
+          // _filterButton('All', null),
+          // _filterButton('Today', 'day'),
+          // _filterButton('30 days', 'month'),
+          // _filterButton('Annual', 'year'),
+        ],
+      ),
+    );
+  }
+
+  Widget _filterButton(String text, String? value) {
+    final selected = _dateFilter == value;
+    return ChoiceChip(
+      label: Text(text),
+      selected: selected,
+      onSelected: (v) {
+        setState(() => _dateFilter = value);
+        _loadData();
       },
     );
   }
 
-  expandImageDialog(BuildContext context, Uint8List imageBlob) {
-    // set up the AlertDialog
-    AlertDialog alert = AlertDialog(
-      title: const Text("Product Image"),
-      content: SizedBox(
-          // height: MediaQuery.of(context).size.height * 0.18,
-          child: Image.memory(imageBlob)),
+  Widget _chip({
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('$label: ',
+              style: const TextStyle(color: Colors.white, fontSize: 14)),
+          Text(
+            value,
+            style: const TextStyle(
+                color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+          )
+        ],
+      ),
     );
+  }
 
-    // show the dialog
+  Widget _buildTable() {
+    return Scrollbar(
+      thumbVisibility: true,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          columns: <DataColumn>[
+            DataColumn(label: Text('Employee', style: tableHead)),
+            DataColumn(label: Text('Product ID', style: tableHead)),
+            DataColumn(label: Text('Product Name', style: tableHead)),
+            DataColumn(label: Text('Quantity', style: tableHead)),
+            DataColumn(label: Text('Date', style: tableHead)),
+          ],
+          rows: _filtered.map((d) {
+            final empName =
+                _employeeNameById[d.employeeRefId] ?? d.employeeRefId;
+            final productName = _productNameById[d.productId] ?? d.productId;
+            return DataRow(
+              cells: <DataCell>[
+                DataCell(Text(empName)),
+                DataCell(Text(d.productId)),
+                DataCell(Text(productName)),
+                DataCell(Text(d.quantity)),
+                DataCell(Text(d.dateOfDisbursement)),
+              ],
+              onSelectChanged: (_) =>
+                  _showDetailsDialog(d, empName, productName),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  void _showDetailsDialog(
+      Disbursement d, String employeeName, String productName) {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
-        return alert;
-      },
+      builder: (_) => AlertDialog(
+        title: const Text('Disbursement Details'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _detailRow('Employee', employeeName),
+              _detailRow('Employee Ref ID', d.employeeRefId),
+              _detailRow('Product ID', d.productId),
+              _detailRow('Product Name', productName),
+              _detailRow('Quantity', d.quantity),
+              _detailRow('Date', d.dateOfDisbursement),
+              const SizedBox(height: 12),
+              const Text('Signature',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 6),
+              if (d.signatureBase64.isNotEmpty)
+                Image.memory(
+                  base64Decode(d.signatureBase64),
+                  height: 160,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) =>
+                      const Text('Signature decode error'),
+                )
+              else
+                const Text('No signature'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+              width: 120,
+              child: Text(label,
+                  style: const TextStyle(fontWeight: FontWeight.w600))),
+          Expanded(child: Text(value)),
+        ],
+      ),
     );
   }
 }

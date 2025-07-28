@@ -1,3 +1,4 @@
+import 'package:aligo/screens/custody/custody_list_screen.dart';
 import 'package:aligo/screens/home.dart';
 import 'package:aligo/screens/inventory/add_product.dart';
 import 'package:aligo/screens/inventory/inventory_list.dart';
@@ -69,6 +70,17 @@ class AligoDrawer extends StatelessWidget {
               Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(builder: (context) => const AddProduct()),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.people),
+            title: const Text('Custody'),
+            onTap: () {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => const CustodyListScreen()),
               );
             },
           ),

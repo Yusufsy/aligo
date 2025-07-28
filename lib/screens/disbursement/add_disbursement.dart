@@ -23,7 +23,7 @@ class _AddDisbursementState extends State<AddDisbursement> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const AligoAppbar(title: 'Add Disbursement'),
+      appBar: const AligoAppbar(title: 'إضافة الصرف'),
       drawer: const AligoDrawer(),
       backgroundColor: Colors.white,
       body: SingleChildScrollView(
@@ -49,7 +49,7 @@ class _AddDisbursementState extends State<AddDisbursement> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               const Text(
-                                'No stock to select.',
+                                'لا يوجد مخزون للاختيار',
                                 style: TextStyle(fontSize: 20),
                               ),
                               TextButton(
@@ -62,7 +62,7 @@ class _AddDisbursementState extends State<AddDisbursement> {
                                   );
                                 },
                                 child: const Text(
-                                  "Add product",
+                                  "إضافة المنتج",
                                   style: TextStyle(fontSize: 20),
                                 ),
                               )
@@ -96,8 +96,8 @@ class _AddDisbursementState extends State<AddDisbursement> {
                                       children: <Widget>[
                                         Expanded(
                                           child: Center(
-                                            child: Image.memory(
-                                              inventory.image,
+                                            child: Image.network(
+                                              inventory.imageUrl,
                                             ),
                                           ),
                                         ),
@@ -148,7 +148,7 @@ class _AddDisbursementState extends State<AddDisbursement> {
 
   expandImageDialog(BuildContext context, Uint8List imageBlob) {
     AlertDialog alert = AlertDialog(
-      title: const Text("Product Image"),
+      title: const Text("صورة المنتج"),
       content: SizedBox(child: Image.memory(imageBlob)),
     );
 

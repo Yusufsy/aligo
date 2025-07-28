@@ -20,7 +20,7 @@ class DisbursementDialog extends StatefulWidget {
 class _DisbursementDialogState extends State<DisbursementDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _empCntrl =
-      TextEditingController(text: widget.saleRecord.employeeId.toString());
+      TextEditingController(text: widget.saleRecord.employeeRefId.toString());
   late final TextEditingController _brandCntrl =
       TextEditingController(text: widget.saleRecord.brand);
   late final TextEditingController _varietyCntrl =
@@ -38,7 +38,7 @@ class _DisbursementDialogState extends State<DisbursementDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text("Disbursement Details"),
+      title: const Text("تفاصيل الصرف"),
       content: SizedBox(
         // height: MediaQuery.of(context).size.height * 0.18,
         child: SingleChildScrollView(
@@ -241,15 +241,23 @@ class _DisbursementDialogState extends State<DisbursementDialog> {
     try {
       final f = DateFormat('yyyy-MM-dd');
       var date = f.format(DateTime.now());
+
+      // Prepare the data to update
+      final Map<String, dynamic> updateData = {
+        'employeeRefId': _empCntrl.text,
+        'quantity': _quantityCntrl.text,
+        'dateOfDisbursement': date,
+        // Only include image if it was changed
+        if (_imageMemo != null) 'image': _imageMemo,
+        // Add other fields you want to update from the dialog
+        'brand': _brandCntrl.text,
+        // Assuming you want to update brand and variety
+        'variety': _varietyCntrl.text,
+      };
+
       await DisbursementDBHelper.instance
-          .update(Disbursement(
-        id: widget.saleRecord.id,
-        employeeId: int.parse(_empCntrl.text),
-        productId: widget.saleRecord.productId,
-        quantity: _quantityCntrl.text,
-        // amount: (int.parse(_quantityCntrl.text) * int.parse(_priceCntrl.text)).toString(),
-        dateOfDisbursement: date,
-      ))
+          .update(widget.saleRecord.id.toString(),
+              updateData) // Pass document ID and map
           .then((value) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -264,9 +272,9 @@ class _DisbursementDialogState extends State<DisbursementDialog> {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Error occurred.'),
-            backgroundColor: Colors.green,
+          SnackBar(
+            content: Text('Error occurred: $e'), // Show the actual error
+            backgroundColor: Colors.red, // Change color for error
           ),
         );
       }

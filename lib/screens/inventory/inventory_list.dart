@@ -1,9 +1,8 @@
-import 'dart:typed_data';
-
 import 'package:aligo/components/aligo_appbar.dart';
 import 'package:aligo/components/aligo_drawer.dart';
 import 'package:aligo/helpers/inventory_helper.dart';
 import 'package:aligo/models/inventory.dart';
+import 'package:aligo/screens/inventory/add_product.dart';
 import 'package:aligo/screens/inventory/update_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -29,7 +28,7 @@ class _InventoryListState extends State<InventoryList> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const AligoAppbar(title: 'Inventory'),
+      appBar: const AligoAppbar(title: 'المخزون'),
       drawer: const AligoDrawer(),
       backgroundColor: Colors.white,
       body: Padding(
@@ -42,10 +41,10 @@ class _InventoryListState extends State<InventoryList> {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  FutureBuilder(
+                  FutureBuilder<int>(
                     future: InventoryDBHelper.instance.numProducts(),
                     builder:
-                        (BuildContext context, AsyncSnapshot<String> snapshot) {
+                        (BuildContext context, AsyncSnapshot<int> snapshot) {
                       if (!snapshot.hasData) {
                         return const Center(child: CircularProgressIndicator());
                       }
@@ -62,12 +61,12 @@ class _InventoryListState extends State<InventoryList> {
                                     color: Colors.white,
                                   ),
                                   const Text(
-                                    "Products: ",
+                                    "منتجات:",
                                     style: TextStyle(
                                         fontSize: 18, color: Colors.white),
                                   ),
                                   Text(
-                                    snapshot.data!,
+                                    snapshot.data!.toString(),
                                     style: summaryHead,
                                   ),
                                 ],
@@ -75,10 +74,10 @@ class _InventoryListState extends State<InventoryList> {
                             );
                     },
                   ),
-                  FutureBuilder(
+                  FutureBuilder<int>(
                     future: InventoryDBHelper.instance.sumQty(),
                     builder:
-                        (BuildContext context, AsyncSnapshot<String> snapshot) {
+                        (BuildContext context, AsyncSnapshot<int> snapshot) {
                       if (!snapshot.hasData) {
                         return const Center(child: CircularProgressIndicator());
                       }
@@ -90,7 +89,7 @@ class _InventoryListState extends State<InventoryList> {
                               child: Row(
                                 children: [
                                   const Text(
-                                    "Quantity: ",
+                                    "كمية:",
                                     style: TextStyle(
                                       fontSize: 18,
                                       color: Colors.white,
@@ -102,7 +101,7 @@ class _InventoryListState extends State<InventoryList> {
                                           style: summaryHead,
                                         )
                                       : Text(
-                                          snapshot.data!,
+                                          snapshot.data!.toString(),
                                           style: summaryHead,
                                         ),
                                 ],
@@ -156,13 +155,14 @@ class _InventoryListState extends State<InventoryList> {
                     : snapshot.data!.map((inventory) {
                         return DataRow(
                           cells: <DataCell>[
-                            DataCell(
-                              GestureDetector(
-                                  onTap: () {
-                                    expandImageDialog(context, inventory.image);
-                                  },
-                                  child: Image.memory(inventory.image)),
-                            ),
+                            // DataCell(
+                            //   GestureDetector(
+                            //       onTap: () {
+                            //         expandImageDialog(
+                            //             context, inventory.imageUrl);
+                            //       },
+                            //       child: Image.network(inventory.imageUrl)),
+                            // ),
                             DataCell(
                               Text(
                                   '${inventory.brand} ${inventory.variety} ${inventory.colour}'),
@@ -186,20 +186,20 @@ class _InventoryListState extends State<InventoryList> {
                             );
                           },
                           onLongPress: () {
-                            showAlertDialog(context, inventory.id!);
+                            showAlertDialog(context, inventory.code);
                           },
                         );
                       }).toList();
                 return snapshot.data!.isEmpty
-                    ? const Center(child: Text('No products yet.'))
+                    ? const Center(child: Text('لا يوجد منتجات حتى الآن.'))
                     : DataTable(
                         showCheckboxColumn: false,
                         columns: <DataColumn>[
-                          DataColumn(label: Text('Image', style: tableHead)),
-                          DataColumn(label: Text('Name', style: tableHead)),
-                          DataColumn(label: Text('Qty', style: tableHead)),
+                          // DataColumn(label: Text('Image', style: tableHead)),
+                          DataColumn(label: Text('اسم', style: tableHead)),
+                          DataColumn(label: Text('الكمية', style: tableHead)),
                           // DataColumn(label: Text('Price', style: tableHead)),
-                          DataColumn(label: Text('Date', style: tableHead)),
+                          DataColumn(label: Text('تاريخ', style: tableHead)),
                         ],
                         rows: rows,
                       );
@@ -207,28 +207,44 @@ class _InventoryListState extends State<InventoryList> {
             )
           ],
         ),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          // Navigate to AddProduct and wait for result
+          final added = await Navigator.push<bool>(
+            context,
+            MaterialPageRoute(builder: (_) => const AddProduct()),
+          );
+
+          // If an item was added (AddProduct returned true), refresh list
+          if (added == true && mounted) {
+            setState(
+                () {}); // Triggers FutureBuilders (getInventories / counts)
+          }
+        },
+        child: const Icon(Icons.post_add_sharp, size: 30),
+      ),
     );
   }
 
-  showAlertDialog(BuildContext context, int id) {
+  showAlertDialog(BuildContext context, String id) {
     // set up the buttons
     Widget cancelButton = TextButton(
-      child: const Text("Cancel"),
+      child: const Text("يلغي"),
       onPressed: () {
         Navigator.pop(context);
       },
     );
     Widget continueButton = TextButton(
       child: const Text(
-        "Delete",
+        "يمسح",
         style: TextStyle(color: Colors.red),
       ),
       onPressed: () async {
         await InventoryDBHelper.instance.remove(id).then((value) {
           Navigator.pop(context);
           ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text('Product delete')));
+              .showSnackBar(const SnackBar(content: Text('تم حذف المنتج')));
         });
         setState(() {});
       },
@@ -236,7 +252,7 @@ class _InventoryListState extends State<InventoryList> {
 
     // set up the AlertDialog
     AlertDialog alert = AlertDialog(
-      title: const Text("Confirm Delete"),
+      title: const Text("تأكيد الحذف"),
       content: SizedBox(
         height: MediaQuery.of(context).size.height * 0.18,
         child: const Column(
@@ -246,7 +262,7 @@ class _InventoryListState extends State<InventoryList> {
               size: 100,
               color: Colors.orange,
             ),
-            Text("Are you sure you want to delete?"),
+            Text("هل أنت متأكد أنك تريد الحذف؟"),
           ],
         ),
       ),
@@ -265,13 +281,13 @@ class _InventoryListState extends State<InventoryList> {
     );
   }
 
-  expandImageDialog(BuildContext context, Uint8List imageBlob) {
+  expandImageDialog(BuildContext context, String imageUrl) {
     // set up the AlertDialog
     AlertDialog alert = AlertDialog(
-      title: const Text("Product Image"),
+      title: const Text("صورة المنتج"),
       content: SizedBox(
           // height: MediaQuery.of(context).size.height * 0.18,
-          child: Image.memory(imageBlob)),
+          child: Image.network(imageUrl)),
     );
 
     // show the dialog

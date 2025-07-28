@@ -23,7 +23,7 @@ class SalesChart extends StatelessWidget {
               ),
               Expanded(
                 child: SfCartesianChart(
-                  primaryXAxis: CategoryAxis(),
+                  primaryXAxis: const CategoryAxis(),
                   series: <CartesianSeries>[
                     BarSeries<DisbursementRecord, String>(
                       dataSource: data,

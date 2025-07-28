@@ -60,12 +60,12 @@ class _ScanState extends State<Scan> {
     final inventories =
         await InventoryDBHelper.instance.getInventoryByCode(code ?? 'none');
     if (context.mounted) {
-      if (inventories.isNotEmpty) {
+      if (inventories != null) {
         await showDialog(
           context: context,
           builder: (context) {
             return StatefulBuilder(builder: (context, setState) {
-              return AddDisbursementDialog(inventory: inventories[0]);
+              return AddDisbursementDialog(inventory: inventories);
             });
           },
         );
