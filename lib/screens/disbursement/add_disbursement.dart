@@ -24,7 +24,7 @@ class _AddDisbursementState extends State<AddDisbursement> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const AligoAppbar(title: 'إضافة الصرف'),
-      drawer: const AligoDrawer(),
+      endDrawer: const AligoDrawer(),
       backgroundColor: Colors.white,
       body: SingleChildScrollView(
         child: Center(

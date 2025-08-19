@@ -39,7 +39,7 @@ class _ChartsPageState extends State<ChartsPage> {
         title: const Text('Reports'),
         backgroundColor: Colors.black54,
       ),
-      drawer: const AligoDrawer(),
+      endDrawer: const AligoDrawer(),
       body: Center(
         child: Container(
           padding: const EdgeInsets.all(5),

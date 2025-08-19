@@ -275,7 +275,7 @@ class _DisbursementListState extends State<DisbursementList> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const AligoAppbar(title: 'تسليم مواد', showLogout: true),
-      drawer: const AligoDrawer(),
+      endDrawer: const AligoDrawer(),
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: Column(

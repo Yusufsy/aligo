@@ -21,7 +21,7 @@ class _ScanState extends State<Scan> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const AligoAppbar(title: 'Barcode Scanner'),
-      drawer: const AligoDrawer(),
+      endDrawer: const AligoDrawer(),
       backgroundColor: Colors.white,
       body: SafeArea(
         child: MobileScanner(

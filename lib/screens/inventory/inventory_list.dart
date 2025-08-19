@@ -29,7 +29,7 @@ class _InventoryListState extends State<InventoryList> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const AligoAppbar(title: 'المخزون'),
-      drawer: const AligoDrawer(),
+      endDrawer: const AligoDrawer(),
       backgroundColor: Colors.white,
       body: Padding(
         padding: const EdgeInsets.all(5),

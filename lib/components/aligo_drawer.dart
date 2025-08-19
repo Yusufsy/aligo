@@ -5,6 +5,7 @@ import 'package:aligo/screens/inventory/inventory_list.dart';
 import 'package:aligo/screens/login.dart';
 import 'package:aligo/screens/disbursement/add_disbursement.dart';
 import 'package:aligo/screens/disbursement/disbursement_list.dart';
+import 'package:aligo/screens/report/charts.dart';
 import 'package:flutter/material.dart';
 
 class AligoDrawer extends StatelessWidget {
@@ -32,8 +33,8 @@ class AligoDrawer extends StatelessWidget {
             ),
           ),
           ListTile(
-            leading: const Icon(Icons.list_alt),
-            title: const Text('Disbursement'),
+            trailing: const Icon(Icons.list_alt),
+            title: const Text('تسليم مواد', textDirection: TextDirection.rtl),
             onTap: () {
               Navigator.pushReplacement(
                 context,
@@ -43,8 +44,8 @@ class AligoDrawer extends StatelessWidget {
             },
           ),
           ListTile(
-            leading: const Icon(Icons.add_shopping_cart),
-            title: const Text('Add Disbursement'),
+            trailing: const Icon(Icons.add_shopping_cart),
+            title: const Text('إضافة الصرف', textDirection: TextDirection.rtl),
             onTap: () {
               Navigator.pushReplacement(
                 context,
@@ -54,8 +55,8 @@ class AligoDrawer extends StatelessWidget {
             },
           ),
           ListTile(
-            leading: const Icon(Icons.all_inbox),
-            title: const Text('Inventory'),
+            trailing: const Icon(Icons.all_inbox),
+            title: const Text('المخزون', textDirection: TextDirection.rtl),
             onTap: () {
               Navigator.pushReplacement(
                 context,
@@ -64,8 +65,9 @@ class AligoDrawer extends StatelessWidget {
             },
           ),
           ListTile(
-            leading: const Icon(Icons.post_add),
-            title: const Text('Add Product'),
+            trailing: const Icon(Icons.post_add),
+            title:
+                const Text('إضافة المخزون', textDirection: TextDirection.rtl),
             onTap: () {
               Navigator.pushReplacement(
                 context,
@@ -74,8 +76,8 @@ class AligoDrawer extends StatelessWidget {
             },
           ),
           ListTile(
-            leading: const Icon(Icons.people),
-            title: const Text('Custody'),
+            trailing: const Icon(Icons.people),
+            title: const Text('جرد', textDirection: TextDirection.rtl),
             onTap: () {
               Navigator.pushReplacement(
                 context,
@@ -85,8 +87,8 @@ class AligoDrawer extends StatelessWidget {
             },
           ),
           ListTile(
-            leading: const Icon(Icons.home),
-            title: const Text('Home'),
+            trailing: const Icon(Icons.home),
+            title: const Text('لوحة التحكم', textDirection: TextDirection.rtl),
             onTap: () {
               Navigator.pushReplacement(
                 context,
@@ -94,19 +96,19 @@ class AligoDrawer extends StatelessWidget {
               );
             },
           ),
+          // ListTile(
+          //   leading: const Icon(Icons.bar_chart),
+          //   title: const Text('Reports'),
+          //   onTap: () {
+          //     Navigator.pushReplacement(
+          //       context,
+          //       MaterialPageRoute(builder: (context) => const ChartsPage()),
+          //     );
+          //   },
+          // ),
           ListTile(
-            leading: const Icon(Icons.bar_chart),
-            title: const Text('Reports'),
-            onTap: () {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => const MyHomePage()),
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.logout),
-            title: const Text('Logout'),
+            trailing: const Icon(Icons.logout),
+            title: const Text('تسجيل الخروج', textDirection: TextDirection.rtl),
             onTap: () {
               Navigator.pushReplacement(
                 context,

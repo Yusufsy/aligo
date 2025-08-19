@@ -2,6 +2,7 @@ import 'package:aligo/screens/create_account.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:aligo/screens/home.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
@@ -43,6 +44,12 @@ class _LoginPageState extends State<LoginPage> {
         throw 'كلمة المرور غير صحيحة';
       }
 
+      // ✅ Persist staff id + name for later unlock checks
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('currentStaffId', staffId);
+      await prefs.setString(
+          'currentStaffName', (data['name'] ?? '').toString());
+
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
@@ -70,92 +77,102 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
 
-    return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 25.0),
-        child: Center(
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                Image.asset(
-                  'assets/images/mof_logo.jpeg',
-                  height: 150,
-                  width: 150,
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  'نظام إدارة شؤون قسم الحاسوب – دائرة الموازنة، وزارة المالية',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontFamily: 'Roboto', fontSize: 20),
-                ),
-                const SizedBox(height: 40),
-                SizedBox(
-                  width: size.width * 0.8,
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      children: [
-                        TextFormField(
-                          controller: staffIdCtrl,
-                          enabled: !_isLoading,
-                          decoration: const InputDecoration(
-                            icon: Icon(Icons.badge),
-                            hintText: 'اسم المستخدم',
+    return Directionality(
+      // 🔁 Force RTL for this page
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        body: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 25.0),
+          child: Center(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  Image.asset(
+                    'assets/images/mof_logo.jpeg',
+                    height: 150,
+                    width: 150,
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'نظام إدارة شؤون قسم الحاسوب – دائرة الموازنة، وزارة المالية',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontFamily: 'Roboto', fontSize: 20),
+                  ),
+                  const SizedBox(height: 40),
+                  SizedBox(
+                    width: size.width * 0.8,
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        children: [
+                          TextFormField(
+                            controller: staffIdCtrl,
+                            enabled: !_isLoading,
+                            textAlign: TextAlign.right,
+                            // ⬅️ right-align Arabic input
+                            decoration: const InputDecoration(
+                              icon: Icon(Icons.badge),
+                              hintText: 'اسم المستخدم',
+                            ),
+                            validator: (v) => v == null || v.isEmpty
+                                ? 'الرجاء إدخال اسم المستخدم'
+                                : null,
                           ),
-                          validator: (v) => v == null || v.isEmpty
-                              ? 'الرجاء إدخال اسم المستخدم'
-                              : null,
-                        ),
-                        const SizedBox(height: 20),
-                        TextFormField(
-                          controller: passCtrl,
-                          enabled: !_isLoading,
-                          obscureText: true,
-                          decoration: const InputDecoration(
-                            icon: Icon(Icons.lock),
-                            hintText: 'كلمة المرور',
+                          const SizedBox(height: 20),
+                          TextFormField(
+                            controller: passCtrl,
+                            enabled: !_isLoading,
+                            obscureText: true,
+                            textAlign: TextAlign.right,
+                            // ⬅️ right-align Arabic input
+                            decoration: const InputDecoration(
+                              icon: Icon(Icons.lock),
+                              hintText: 'كلمة المرور',
+                            ),
+                            validator: (v) => v == null || v.isEmpty
+                                ? 'الرجاء إدخال كلمة المرور'
+                                : null,
                           ),
-                          validator: (v) => v == null || v.isEmpty
-                              ? 'الرجاء إدخال كلمة المرور'
-                              : null,
-                        ),
-                        const SizedBox(height: 30),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 48,
-                          child: ElevatedButton(
-                            onPressed: _isLoading ? null : _login,
-                            child: _isLoading
-                                ? const SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2.5,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                          Colors.white),
+                          const SizedBox(height: 30),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 48,
+                            child: ElevatedButton(
+                              onPressed: _isLoading ? null : _login,
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.5,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                                Colors.white),
+                                      ),
+                                    )
+                                  : const Text('تسجيل الدخول'),
+                            ),
+                          ),
+                          const SizedBox(height: 15),
+                          TextButton(
+                            onPressed: _isLoading
+                                ? null
+                                : () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            const CreateAccountPage(),
+                                      ),
                                     ),
-                                  )
-                                : const Text('تسجيل الدخول'),
+                            child: const Text('ليس لديك حساب؟ أنشئ حسابًا'),
                           ),
-                        ),
-                        const SizedBox(height: 15),
-                        TextButton(
-                          onPressed: _isLoading
-                              ? null
-                              : () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => const CreateAccountPage(),
-                                    ),
-                                  ),
-                          child: const Text("ليس لديك حساب؟ أنشئ حسابًا"),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

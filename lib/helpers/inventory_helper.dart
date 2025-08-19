@@ -47,4 +47,50 @@ class InventoryDBHelper {
     final list = await getInventories();
     return list.length;
   }
+
+  /// Aggregate quantities per product label for the dashboard horizontal summary.
+  ///
+  /// By default each item is labeled as "<brand> <variety>" (e.g., "Canon 6030").
+  /// You can override the label with [labelBuilder] if you prefer grouping by another field,
+  /// e.g. (inv) => inv.code or "${inv.brand} ${inv.colour}".
+  Future<List<Map<String, dynamic>>> fetchQtyPerProduct({
+    String Function(Inventory inv)? labelBuilder,
+  }) async {
+    final items = await getInventories();
+
+    // Group totals by chosen label
+    final Map<String, int> totals = {};
+    for (final inv in items) {
+      // Default label: "Brand Variety"
+      final String label =
+          (labelBuilder != null) ? labelBuilder(inv) : _defaultLabel(inv);
+
+      final int q = int.tryParse(inv.quantity) ?? 0;
+      if (label.trim().isEmpty) continue; // skip unlabeled entries safely
+      totals.update(label, (old) => old + q, ifAbsent: () => q);
+    }
+
+    // Convert to List<Map> and sort by name (RTL-friendly too)
+    final rows = totals.entries
+        .map((e) => <String, dynamic>{'name': e.key, 'qty': e.value})
+        .toList()
+      ..sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
+
+    return rows;
+  }
+
+  // Helper used by fetchQtyPerProduct
+  String _defaultLabel(Inventory inv) {
+    final parts = <String>[
+      (inv.brand).toString().trim(),
+      (inv.variety).toString().trim(),
+    ].where((s) => s.isNotEmpty).toList();
+
+    // Fallback to code if both brand & variety are empty
+    if (parts.isEmpty) {
+      final code = (inv.code).toString().trim();
+      return code.isNotEmpty ? code : 'بدون اسم';
+    }
+    return parts.join(' ');
+  }
 }

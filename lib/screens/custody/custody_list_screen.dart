@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io' show File; // Guarded by kIsWeb checks at runtime.
 import 'dart:typed_data';
 
 import 'package:aligo/components/aligo_appbar.dart';
@@ -11,9 +10,6 @@ import 'package:flutter/foundation.dart'
     show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
-
-// Conditional import for web download helper
 
 /// Read-only model for displaying Firestore documents.
 class CustodyRecordRead {
@@ -161,7 +157,7 @@ class _CustodyListScreenState extends State<CustodyListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const AligoAppbar(title: 'جرد'),
-      drawer: const AligoDrawer(),
+      endDrawer: const AligoDrawer(),
       body: StreamBuilder<List<CustodyRecordRead>>(
         stream: _recordsStream(),
         builder: (context, snap) {
@@ -198,7 +194,7 @@ class _CustodyListScreenState extends State<CustodyListScreen> {
                             records: filtered,
                             totalCount: all.length,
                             filteredCount: filtered.length,
-                            onRowTap: (r) => _showRecordDialog(context, r),
+                            onRowTap: (r) => _goToEdit(context, r),
                           )
                         : (_query.isEmpty
                             ? _GroupedMobileList(
@@ -208,8 +204,7 @@ class _CustodyListScreenState extends State<CustodyListScreen> {
                               )
                             : _FilteredMobileList(
                                 records: filtered,
-                                onTapRecord: (r) =>
-                                    _showRecordDialog(context, r),
+                                onTapRecord: (r) => _goToEdit(context, r),
                               )),
               ),
             ],
@@ -217,24 +212,32 @@ class _CustodyListScreenState extends State<CustodyListScreen> {
         },
       ),
       floatingActionButton: FloatingActionButton(
+        tooltip: 'إضافة سجل جرد',
+        child: const Icon(Icons.add),
         onPressed: () {
           Navigator.push(
             context,
             MaterialPageRoute(
               builder: (_) => const AddCustodyScreen(),
             ),
-          ).then((_) {
-            // Optionally refresh the list after adding a new record
-            if (mounted) setState(() {});
+          ).then((updated) {
+            if (updated == true && mounted) setState(() {});
           });
         },
-        tooltip: 'إضافة سجل جرد',
-        child: const Icon(Icons.add),
       ),
     );
   }
 
-  // ---------- Search Bar (now built inside StreamBuilder) ----------
+  // ---------- Navigation to edit ----------
+  Future<void> _goToEdit(BuildContext rootContext, CustodyRecordRead r) async {
+    final updated = await Navigator.push(
+      rootContext,
+      MaterialPageRoute(builder: (_) => AddCustodyScreen(initialRecord: r)),
+    );
+    if (updated == true && mounted) setState(() {});
+  }
+
+  // ---------- Search Bar ----------
   Widget _buildSearchBar(
     BuildContext context, {
     required int total,
@@ -288,15 +291,15 @@ class _CustodyListScreenState extends State<CustodyListScreen> {
     );
   }
 
-  // ---------- Dialogs ----------
+  // ---------- Grouped Dialog (Name → list of records, tap → EDIT) ----------
   void _showGroupedDialog(
-    BuildContext context,
+    BuildContext rootContext,
     String name,
     List<CustodyRecordRead> group,
   ) {
     showDialog(
-      context: context,
-      builder: (_) => Dialog(
+      context: rootContext,
+      builder: (dialogCtx) => Dialog(
         insetPadding: const EdgeInsets.all(16),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxHeight: 620, maxWidth: 520),
@@ -307,48 +310,38 @@ class _CustodyListScreenState extends State<CustodyListScreen> {
                 automaticallyImplyLeading: false,
                 actions: [
                   IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close)),
+                    tooltip: 'Close',
+                    onPressed: () => Navigator.pop(dialogCtx),
+                    icon: const Icon(Icons.close),
+                  ),
                 ],
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 8, right: 12, left: 12),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'اضغط على البطاقة للتعديل مباشرة',
+                    style: Theme.of(rootContext).textTheme.bodySmall,
+                  ),
+                ),
               ),
               Expanded(
                 child: ListView.separated(
                   padding: const EdgeInsets.all(12),
                   itemCount: group.length,
                   separatorBuilder: (_, __) => const Divider(height: 30),
-                  itemBuilder: (_, i) =>
-                      _RecordDetailsCard(record: group[i], dense: true),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showRecordDialog(BuildContext context, CustodyRecordRead r) {
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        insetPadding: const EdgeInsets.all(24),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 840, maxHeight: 760),
-          child: Column(
-            children: [
-              AppBar(
-                title: Text('Details - ${r.name}'),
-                automaticallyImplyLeading: false,
-                actions: [
-                  IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close)),
-                ],
-              ),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: _RecordDetailsCard(record: r),
+                  itemBuilder: (_, i) {
+                    final rec = group[i];
+                    return InkWell(
+                      onTap: () async {
+                        // Close dialog first, then navigate to edit
+                        Navigator.of(dialogCtx).pop();
+                        await _goToEdit(rootContext, rec);
+                      },
+                      child: _RecordDetailsCard(record: rec, dense: true),
+                    );
+                  },
                 ),
               ),
             ],
@@ -411,22 +404,6 @@ class _CustodyListScreenState extends State<CustodyListScreen> {
     final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
     final filename = 'custody_export_$ts.csv';
 
-    // if (kIsWeb) {
-    //   try {
-    //     saveCsvWeb(filename, csv);
-    //     if (mounted) {
-    //       ScaffoldMessenger.of(context).showSnackBar(
-    //         SnackBar(content: Text('CSV downloaded: $filename')),
-    //       );
-    //     }
-    //   } catch (e) {
-    //     if (mounted) {
-    //       ScaffoldMessenger.of(context).showSnackBar(
-    //         SnackBar(content: Text('Web export failed: $e')),
-    //       );
-    //     }
-    //   }
-    // } else {
     try {
       final csvBytes = Uint8List.fromList(utf8.encode(csv));
 
@@ -436,7 +413,7 @@ class _CustodyListScreenState extends State<CustodyListScreen> {
         type: FileType.custom,
         allowedExtensions: ['csv'],
         bytes: csvBytes,
-        // <--- REQUIRED on Android / iOS (and fine on desktop)
+        // required on Android/iOS
         lockParentWindow: true,
       );
 
@@ -461,8 +438,6 @@ class _CustodyListScreenState extends State<CustodyListScreen> {
         );
       }
     }
-
-    // }
   }
 
   String _csvEscape(Object? raw) {
@@ -550,7 +525,7 @@ class _FilteredMobileList extends StatelessWidget {
         return ListTile(
           title: Text(r.name),
           subtitle: Text(_subtitle(r)),
-          trailing: const Icon(Icons.open_in_new),
+          trailing: const Icon(Icons.edit),
           onTap: () => onTapRecord(r),
         );
       },

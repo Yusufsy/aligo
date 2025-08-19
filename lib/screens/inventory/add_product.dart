@@ -133,7 +133,7 @@ class _AddProductState extends State<AddProduct> {
     var size = MediaQuery.of(context).size;
     return Scaffold(
       appBar: const AligoAppbar(title: 'إضافة المخزون'),
-      drawer: const AligoDrawer(),
+      endDrawer: const AligoDrawer(),
       body: SingleChildScrollView(
         child: Center(
           child: Column(
