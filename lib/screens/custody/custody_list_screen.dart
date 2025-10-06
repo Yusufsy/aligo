@@ -5,6 +5,7 @@ import 'package:aligo/components/aligo_appbar.dart';
 import 'package:aligo/components/aligo_drawer.dart';
 import 'package:aligo/screens/custody/add_custody_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:syncfusion_flutter_xlsio/xlsio.dart' as xlsio;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart'
     show kIsWeb, defaultTargetPlatform, TargetPlatform;
@@ -204,7 +205,14 @@ class _CustodyListScreenState extends State<CustodyListScreen> {
                               )
                             : _FilteredMobileList(
                                 records: filtered,
-                                onTapRecord: (r) => _goToEdit(context, r),
+                                onTapRecord: (r) {
+                                  // Show the same grouped preview dialog used elsewhere,
+                                  // but scoped to the tapped person's name.
+                                  final group = (snap.data ?? [])
+                                      .where((x) => x.name == r.name)
+                                      .toList();
+                                  _showGroupedDialog(context, r.name, group);
+                                },
                               )),
               ),
             ],
@@ -272,9 +280,9 @@ class _CustodyListScreenState extends State<CustodyListScreen> {
             ),
             const SizedBox(width: 12),
             ElevatedButton.icon(
-              onPressed: canExport ? _exportCsv : null,
+              onPressed: canExport ? _exportExcel : null,
               icon: const Icon(Icons.download),
-              label: const Text('تصدير ملف CSV'),
+              label: const Text('تصدير ملف EXCEL'),
             ),
             if (_isDesktopOrWeb) ...[
               const SizedBox(width: 12),
@@ -352,11 +360,107 @@ class _CustodyListScreenState extends State<CustodyListScreen> {
   }
 
   // ---------- CSV Export ----------
-  Future<void> _exportCsv() async {
+  // Future<void> _exportCsv() async {
+  //   if (_latestFiltered.isEmpty) return;
+  //
+  //   final buffer = StringBuffer();
+  //   buffer.writeln([
+  //     'Name',
+  //     'ComputerType',
+  //     'LaptopSN',
+  //     'CaseModel',
+  //     'Keyboard',
+  //     'Mouse',
+  //     'Monitor',
+  //     'Printer',
+  //     'UPS',
+  //     'Scanner',
+  //     'Department',
+  //     'Level',
+  //     'CPU',
+  //     'HashMarks',
+  //     'IP_1',
+  //     'IP_2',
+  //     'Notes',
+  //     'CreatedAt',
+  //   ].map(_csvEscape).join(','));
+  //
+  //   for (final r in _latestFiltered) {
+  //     buffer.writeln([
+  //       r.name,
+  //       r.computerType,
+  //       r.laptopSn,
+  //       r.caseModel,
+  //       r.keyboard,
+  //       r.mouse,
+  //       r.monitor,
+  //       r.printer,
+  //       r.ups,
+  //       r.scanner,
+  //       r.department,
+  //       r.level,
+  //       r.cpu,
+  //       r.hashMarks,
+  //       r.ip1,
+  //       r.ip2,
+  //       r.notes,
+  //       r.createdAt?.toIso8601String(),
+  //     ].map(_csvEscape).join(','));
+  //   }
+  //
+  //   final csv = buffer.toString();
+  //   final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+  //   final filename = 'custody_export_$ts.csv';
+  //
+  //   try {
+  //     final csvBytes = Uint8List.fromList(utf8.encode(csv));
+  //
+  //     final savePath = await FilePicker.platform.saveFile(
+  //       dialogTitle: 'Save CSV',
+  //       fileName: filename,
+  //       type: FileType.custom,
+  //       allowedExtensions: ['csv'],
+  //       bytes: csvBytes,
+  //       // required on Android/iOS
+  //       lockParentWindow: true,
+  //     );
+  //
+  //     if (savePath == null) {
+  //       if (mounted) {
+  //         ScaffoldMessenger.of(context).showSnackBar(
+  //           const SnackBar(content: Text('Export cancelled')),
+  //         );
+  //       }
+  //       return;
+  //     }
+  //
+  //     if (mounted) {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         SnackBar(content: Text('Saved: $savePath')),
+  //       );
+  //     }
+  //   } catch (e) {
+  //     if (mounted) {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         SnackBar(content: Text('File save failed: $e')),
+  //       );
+  //     }
+  //   }
+  // }
+
+  // ... (replace _exportCsv and _csvEscape)
+
+// ---------- Excel (.xlsx) Export ----------
+  Future<void> _exportExcel() async {
     if (_latestFiltered.isEmpty) return;
 
-    final buffer = StringBuffer();
-    buffer.writeln([
+    // Create workbook & sheet
+    final wb = xlsio.Workbook();
+    final sheet = wb.worksheets[0];
+    sheet.name = 'Custody Records';
+
+    // Headers
+    final headers = [
       'Name',
       'ComputerType',
       'LaptopSN',
@@ -375,68 +479,106 @@ class _CustodyListScreenState extends State<CustodyListScreen> {
       'IP_2',
       'Notes',
       'CreatedAt',
-    ].map(_csvEscape).join(','));
+      'Signature',
+    ];
 
-    for (final r in _latestFiltered) {
-      buffer.writeln([
-        r.name,
-        r.computerType,
-        r.laptopSn,
-        r.caseModel,
-        r.keyboard,
-        r.mouse,
-        r.monitor,
-        r.printer,
-        r.ups,
-        r.scanner,
-        r.department,
-        r.level,
-        r.cpu,
-        r.hashMarks,
-        r.ip1,
-        r.ip2,
-        r.notes,
-        r.createdAt?.toIso8601String(),
-      ].map(_csvEscape).join(','));
+    // Write headers (row 1)
+    for (int c = 0; c < headers.length; c++) {
+      final cell = sheet.getRangeByIndex(1, c + 1);
+      cell.setText(headers[c]);
+      cell.cellStyle.bold = true;
     }
 
-    final csv = buffer.toString();
+    // Helper: clean + decode base64 (handles data URLs)
+    Uint8List? _decodeBase64Image(String b64) {
+      try {
+        final cleaned = b64.split(',').last.trim();
+        return Uint8List.fromList(base64Decode(cleaned));
+      } catch (_) {
+        return null;
+      }
+    }
+
+    // Write rows starting at row 2
+    int row = 2;
+    for (final r in _latestFiltered) {
+      sheet.getRangeByIndex(row, 1).setText(r.name);
+      sheet.getRangeByIndex(row, 2).setText(r.computerType ?? '');
+      sheet.getRangeByIndex(row, 3).setText(r.laptopSn ?? '');
+      sheet.getRangeByIndex(row, 4).setText(r.caseModel ?? '');
+      sheet.getRangeByIndex(row, 5).setText(r.keyboard ?? '');
+      sheet.getRangeByIndex(row, 6).setText(r.mouse ?? '');
+      sheet.getRangeByIndex(row, 7).setText(r.monitor ?? '');
+      sheet.getRangeByIndex(row, 8).setText(r.printer ?? '');
+      sheet.getRangeByIndex(row, 9).setText(r.ups ?? '');
+      sheet.getRangeByIndex(row, 10).setText(r.scanner ?? '');
+      sheet.getRangeByIndex(row, 11).setText(r.department ?? '');
+      sheet.getRangeByIndex(row, 12).setText(r.level ?? '');
+      sheet.getRangeByIndex(row, 13).setText(r.cpu ?? '');
+      sheet.getRangeByIndex(row, 14).setText(r.hashMarks ?? '');
+      sheet.getRangeByIndex(row, 15).setText(r.ip1 ?? '');
+      sheet.getRangeByIndex(row, 16).setText(r.ip2 ?? '');
+      sheet.getRangeByIndex(row, 17).setText(r.notes ?? '');
+      sheet.getRangeByIndex(row, 18).setText(r.createdAt != null
+          ? DateFormat('yyyy-MM-dd HH:mm:ss').format(r.createdAt!)
+          : '');
+
+      // Put signature image in column 19 (Signature)
+      final img = _decodeBase64Image(r.signatureBase64);
+      if (img != null && img.isNotEmpty) {
+        // Anchor picture to the signature cell’s top-left
+        final pic = sheet.pictures.addStream(row, 19, img);
+        // Size & row height so it’s visible
+        pic.height = 60; // points
+        pic.width = 150;
+        sheet.getRangeByIndex(row, 1).rowHeight = 48; // adjust row height
+      } else {
+        sheet.getRangeByIndex(row, 19).setText('—');
+      }
+
+      row++;
+    }
+
+    // Auto-fit columns
+    for (int c = 1; c <= headers.length; c++) {
+      sheet.autoFitColumn(c);
+    }
+
+    // Save workbook to bytes
+    final bytes = Uint8List.fromList(wb.saveAsStream());
+    wb.dispose();
+
+    // Save via FilePicker (works on mobile/desktop/web)
     final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-    final filename = 'custody_export_$ts.csv';
+    final filename = 'custody_export_$ts.xlsx';
 
     try {
-      final csvBytes = Uint8List.fromList(utf8.encode(csv));
-
       final savePath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Save CSV',
+        dialogTitle: 'Save Excel',
         fileName: filename,
         type: FileType.custom,
-        allowedExtensions: ['csv'],
-        bytes: csvBytes,
-        // required on Android/iOS
+        allowedExtensions: ['xlsx'],
+        bytes: bytes,
         lockParentWindow: true,
       );
 
       if (savePath == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Export cancelled')),
-          );
-        }
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Export cancelled')),
+        );
         return;
       }
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Saved: $savePath')),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Saved: $savePath')),
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('File save failed: $e')),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Export failed: $e')),
+      );
     }
   }
 
@@ -664,7 +806,7 @@ class _RecordDetailsCard extends StatelessWidget {
     final fieldList = <_Field>[
       _Field('Name', record.name),
       _Field('Computer Type', record.computerType),
-      _Field('Laptop SN', record.laptopSn),
+      // _Field('Laptop SN', record.laptopSn),
       _Field('Case Model', record.caseModel),
       _Field('Keyboard', record.keyboard),
       _Field('Mouse', record.mouse),
@@ -675,9 +817,9 @@ class _RecordDetailsCard extends StatelessWidget {
       _Field('Department', record.department),
       _Field('Level', record.level),
       _Field('CPU', record.cpu),
-      _Field('##', record.hashMarks),
-      _Field('IP_1', record.ip1),
-      _Field('IP_2', record.ip2),
+      // _Field('##', record.hashMarks),
+      // _Field('IP_1', record.ip1),
+      // _Field('IP_2', record.ip2),
       _Field('Notes', record.notes),
       _Field('Date', createdStr),
     ].where((f) => f.value != null && f.value!.trim().isNotEmpty).toList();
